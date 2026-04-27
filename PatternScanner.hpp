@@ -35,21 +35,27 @@ namespace PatternScanner {
 	using t_Processor = void (*)(t_ProcessorAPI* processorData, void* const callbackData, t_Callback callback);
 
 	class t_Pattern {
-
-		struct t_API {
-			const std::span<const short> AoB;
-			size_t* const foundOffset;
-			bool countOccurence;
-			size_t occurenceCount;
-			size_t seekIndex;
-		};
-
 		std::span<const short> m_AoB;
 		size_t m_FoundOffset;
 
-		static bool ProcessByte(t_Pattern::t_API *const api, const size_t processedByteIndex, uint8_t& processedByte);
 	public:
-		friend class t_PatternPtrList; 
+		struct ScanResult {
+			std::vector<size_t> foundOffsets;
+			bool isDeepScanned; // useful when the system switches to deepscan when the guessed offset isn't a match
+		};
+		friend class t_PatternPtrList;
+
+	private:
+		struct t_API {
+			const std::span<const short> AoB;
+			size_t occurenceCount;
+			size_t seekIndex;
+			ScanResult &result;
+		};
+
+		static bool ProcessByte(t_Pattern::t_API *const api, const size_t processedByteIndex, uint8_t& processedByte);
+
+	public:
 		static std::vector<short> PatternToAoB(const char* pattern);
 		consteval t_Pattern(const std::span<const short> AoB, const size_t foundOffset = SIZE_MAX) : m_AoB(AoB), m_FoundOffset(foundOffset) {}
 		t_Pattern(const char* pattern, const size_t foundOffset = SIZE_MAX) : m_FoundOffset(foundOffset) {
@@ -57,37 +63,52 @@ namespace PatternScanner {
 			storage = PatternToAoB(pattern);
 			m_AoB = std::span<const short>(storage);
 		}
+		void PrintInfo(void);
 		bool CheckInitialGuessedOffset(const std::span<uint8_t>& data);
 		bool CheckInitialGuessedOffset(t_Iterator iterator);
 		bool CheckInitialGuessedOffset(void* const processorData, const t_Processor processor);
-		size_t Scan(const std::span<uint8_t>& data, const bool countOccurence = false);
-		size_t Scan(void* const data, const size_t size, const bool countOccurence = false);
-		size_t Scan(t_Iterator iterator, const bool countOccurence = false);
-		size_t Scan(void* const processorData, const t_Processor processor, const bool countOccurence = false);
-		size_t GetFoundOffset(void);
+		ScanResult Scan(const std::span<uint8_t>& data, const bool isDeepScan = false);
+		ScanResult Scan(void* const data, const size_t size, const bool isDeepScan = false);
+		ScanResult Scan(t_Iterator iterator, const bool isDeepScan = false);
+		ScanResult Scan(void* const processorData, const t_Processor processor, const bool isDeepScan = false);
+		constexpr size_t GetFoundOffset(void) const {
+			return m_FoundOffset;
+		}
+		void SetFoundOffset(size_t foundOffset) {
+			m_FoundOffset = foundOffset;
+		}
 	};
 
 	class t_PatternPtrList {
-		struct t_API {
-			std::span<t_Pattern* const> list;
-			bool countOccurence;
-			std::vector<size_t> occurenceCounts;
-			std::vector<size_t> seekIndeces;
+		std::span<t_Pattern* const> m_list;
+	public:
+		struct ScanResult {
+			std::vector<std::vector<size_t>> foundOffsets;
+			bool isDeepScanned; // useful when the system switches to deepscan when the guessed offset isn't a match
 		};
 
-		std::span<t_Pattern* const> m_list;
+	private:
+		struct t_API {
+			std::span<t_Pattern* const> list;
+			std::vector<size_t> seekIndeces;
+			ScanResult &result;
+		};
 
-		std::vector<size_t> CheckInitialGuessedOffsets(void);
 		static bool ProcessByte(t_API *const api, const size_t processedByteIndex, uint8_t& processedByte);
+
 	public:
 		consteval t_PatternPtrList(const std::span<t_Pattern* const> list) : m_list(list) {}
 		consteval t_PatternPtrList(t_Pattern** const list, const size_t count) {
 			m_list = std::span<t_Pattern* const>(list, count);
 		}
-		std::vector<size_t> Scan(const std::span<uint8_t> data, const bool countOccurence = false);
-		std::vector<size_t> Scan(void* const data, const size_t size, const bool countOccurence = false);
-		std::vector<size_t> Scan(t_Iterator iterator, const bool countOccurence = false);
-		std::vector<size_t> Scan(void* const processorData, const t_Processor processor, const bool countOccurence = false);
+		constexpr size_t GetCount(void) const {
+			return m_list.size();
+		}
+		std::vector<bool> CheckInitialGuessedOffsets(void* const processorData, const t_Processor processor);
+		ScanResult Scan(const std::span<uint8_t> data, const bool isDeepScan = false);
+		ScanResult Scan(void* const data, const size_t size, const bool isDeepScan = false);
+		ScanResult Scan(t_Iterator iterator, const bool isDeepScan = false);
+		ScanResult Scan(void* const processorData, const t_Processor processor, bool isDeepScan = false);
 		t_Pattern* operator[](const size_t index) const;
 	};
 }
